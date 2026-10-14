@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     environment {
-        HARBOR_REGISTRY = '172.28.63.77:8081'
-        HARBOR_PROJECT  = 'smart-waste-management'
+    HARBOR_REGISTRY = '172.28.63.77:8081'
+    HARBOR_PROJECT  = 'smart-waste-management'
 
-        BACKEND_IMAGE   = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-backend"
-        FRONTEND_IMAGE  = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-frontend"
-    }
+    BACKEND_IMAGE   = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-backend"
+    FRONTEND_IMAGE  = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-frontend"
+}
 
     stages {
 
