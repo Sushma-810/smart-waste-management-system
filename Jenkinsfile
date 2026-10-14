@@ -105,7 +105,7 @@ pipeline {
             }
         }
 
-        stage('Health Check') {
+    stage('Health Check') {
     steps {
         sh '''
             echo "===== Backend Health Check ====="
@@ -113,7 +113,24 @@ pipeline {
             sleep 3
 
             docker exec swm-backend-container \
-            node -e "fetch('http://localhost:5000').then(r => { console.log('Backend HTTP Status:', r.status); process.exit(r.ok ? 0 : 1) }).catch(e => { console.error(e); process.exit(1) })"
+            node -e "
+                fetch('http://localhost:5000')
+                .then(r => {
+                    console.log('Backend HTTP Status:', r.status);
+
+                    if (r.status >= 200 && r.status < 500) {
+                        console.log('Backend application is responding!');
+                        process.exit(0);
+                    } else {
+                        console.log('Backend health check failed!');
+                        process.exit(1);
+                    }
+                })
+                .catch(e => {
+                    console.error('Backend connection failed:', e);
+                    process.exit(1);
+                })
+            "
 
             echo ""
             echo "Backend is responding successfully!"
@@ -123,7 +140,6 @@ pipeline {
             docker exec swm-frontend-container \
             wget -qO- http://localhost > /dev/null
 
-            echo ""
             echo "Frontend is responding successfully!"
         '''
     }
