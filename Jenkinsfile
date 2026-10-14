@@ -106,26 +106,28 @@ pipeline {
         }
 
         stage('Health Check') {
-            steps {
-                sh '''
-                    echo "===== Backend Health Check ====="
+    steps {
+        sh '''
+            echo "===== Backend Health Check ====="
 
-                    sleep 3
+            sleep 3
 
-                    curl -f http://localhost:5000 || exit 1
+            docker exec swm-backend-container \
+            node -e "fetch('http://localhost:5000').then(r => { console.log('Backend HTTP Status:', r.status); process.exit(r.ok ? 0 : 1) }).catch(e => { console.error(e); process.exit(1) })"
 
-                    echo ""
-                    echo "Backend is responding successfully!"
+            echo ""
+            echo "Backend is responding successfully!"
 
-                    echo "===== Frontend Health Check ====="
+            echo "===== Frontend Health Check ====="
 
-                    curl -f http://localhost:5173 || exit 1
+            docker exec swm-frontend-container \
+            wget -qO- http://localhost > /dev/null
 
-                    echo ""
-                    echo "Frontend is responding successfully!"
-                '''
-            }
-        }
+            echo ""
+            echo "Frontend is responding successfully!"
+        '''
+    }
+}
     }
 
     post {
