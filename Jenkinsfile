@@ -71,21 +71,61 @@ pipeline {
         // =========================================================
 
         stage('Build Frontend Docker Image') {
-            steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Building Smart Waste Frontend Docker Image"
-                    echo "=============================================="
+    steps {
 
-                    docker build \
-                    -f swm-frontend/swmfront.Dockerfile \
-                    -t swm-frontend:latest \
-                    ./swm-frontend
+        withCredentials([
+            file(
+                credentialsId: 'swm-ssl-cert',
+                variable: 'SSL_CERT'
+            ),
+            file(
+                credentialsId: 'swm-ssl-key',
+                variable: 'SSL_KEY'
+            )
+        ]) 
+        {
 
-                    echo "Frontend Docker image built successfully."
-                '''
-            }
-        }
+            sh '''
+                echo "=============================================="
+                echo "Preparing SSL Certificates"
+                echo "=============================================="
+
+                mkdir -p swm-frontend/ssl
+
+                cp "$SSL_CERT" swm-frontend/ssl/swm.crt
+                cp "$SSL_KEY" swm-frontend/ssl/swm.key
+
+                chmod 600 swm-frontend/ssl/swm.key
+                chmod 644 swm-frontend/ssl/swm.crt
+
+                echo "SSL files prepared."
+                ls -l swm-frontend/ssl
+
+
+                echo "=============================================="
+                echo "Building Smart Waste Frontend Docker Image"
+                echo "=============================================="
+
+                docker build \
+                -f swm-frontend/swmfront.Dockerfile \
+                -t swm-frontend:latest \
+                ./swm-frontend
+
+                echo "Frontend Docker image built successfully."
+
+
+                echo "=============================================="
+                echo "Removing Temporary SSL Files"
+                echo "=============================================="
+
+                rm -f swm-frontend/ssl/swm.crt
+                rm -f swm-frontend/ssl/swm.key
+
+                echo "Temporary SSL files removed."
+            '''
+        
+    }
+}
 
 
         // =========================================================
