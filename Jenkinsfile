@@ -144,6 +144,20 @@ pipeline {
                 '''
             }
         }
+        stage('Prepare SWM Network') {
+    steps {
+        sh '''
+            echo "=============================================="
+            echo "Preparing SWM Docker Network"
+            echo "=============================================="
+
+            docker network inspect swm >/dev/null 2>&1 || \
+            docker network create swm
+
+            echo "SWM Docker network is ready."
+        '''
+    }
+}
 
 
         // =========================================================
@@ -151,33 +165,35 @@ pipeline {
         // =========================================================
 
         stage('Deploy Backend') {
-            steps {
+    steps {
 
-                withCredentials([
-                    file(
-                        credentialsId: 'swm-backend-env',
-                        variable: 'ENV_FILE'
-                    )
-                ]) {
+        withCredentials([
+            file(
+                credentialsId: 'swm-backend-env',
+                variable: 'ENV_FILE'
+            )
+        ])
+        {
 
-                    sh '''
-                        echo "=============================================="
-                        echo "Deploying Smart Waste Backend"
-                        echo "=============================================="
+            sh '''
+                echo "=============================================="
+                echo "Deploying Smart Waste Backend"
+                echo "=============================================="
 
-                        docker rm -f swm-backend-container || true
+                docker rm -f swm-backend-container || true
 
-                        docker run -d \
-                        --name swm-backend-container \
-                        --env-file "$ENV_FILE" \
-                        -p 5000:5000 \
-                        swm-backend:latest
+                docker run -d \
+                    --name swm-backend-container \
+                    --network swm \
+                    --env-file "$ENV_FILE" \
+                    -p 5000:5000 \
+                    swm-backend:latest
 
-                        echo "Backend container started successfully."
-                    '''
-                }
-            }
+                echo "Backend container started successfully."
+            '''
         }
+    }
+}
 
 
         // =========================================================
@@ -185,24 +201,25 @@ pipeline {
         // =========================================================
 
         stage('Deploy Frontend') {
-            steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Deploying Smart Waste Frontend"
-                    echo "=============================================="
+    steps {
+        sh '''
+            echo "=============================================="
+            echo "Deploying Smart Waste Frontend"
+            echo "=============================================="
 
-                    docker rm -f swm-frontend-container || true
+            docker rm -f swm-frontend-container || true
 
-                   docker run -d \
-    --name swm-frontend-container \
-    -p 5173:80 \
-    -p 5443:443 \
-    swm-frontend:latest
+            docker run -d \
+                --name swm-frontend-container \
+                --network swm \
+                -p 5173:80 \
+                -p 5443:443 \
+                swm-frontend:latest
 
-echo "Frontend container started successfully."
-                '''
-            }
-        }
+            echo "Frontend container started successfully."
+        '''
+    }
+}
 
 
         // =========================================================
