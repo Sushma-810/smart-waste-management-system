@@ -152,12 +152,13 @@ pipeline {
 
                     docker rm -f swm-frontend-container || true
 
-                    docker run -d \
-                    --name swm-frontend-container \
-                    -p 5173:80 \
-                    swm-frontend:latest
+                   docker run -d \
+    --name swm-frontend-container \
+    -p 5173:80 \
+    -p 5443:443 \
+    swm-frontend:latest
 
-                    echo "Frontend container started successfully."
+echo "Frontend container started successfully."
                 '''
             }
         }
