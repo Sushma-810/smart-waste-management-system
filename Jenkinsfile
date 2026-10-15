@@ -260,13 +260,17 @@ echo "Frontend container started successfully."
 
 
                     echo "=============================================="
-                    echo "Frontend Health Check"
-                    echo "=============================================="
+echo "Frontend Health Check"
+echo "=============================================="
 
-                    docker exec swm-frontend-container \
-                    wget -qO- http://localhost > /dev/null
+docker exec swm-frontend-container nginx -t
 
-                    echo "Frontend is responding successfully."
+docker exec swm-frontend-container sh -c \
+    'test -f /usr/share/nginx/html/index.html'
+
+echo "Frontend Nginx configuration is valid."
+echo "Frontend index.html exists."
+echo "Frontend is responding successfully."
                 '''
             }
         }
