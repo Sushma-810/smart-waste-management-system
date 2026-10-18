@@ -56,9 +56,9 @@ pipeline {
                     echo "=============================================="
 
                     docker build \
-                    -f swm-backend/swm.Dockerfile \
-                    -t swm-backend:latest \
-                    ./swm-backend
+                        -f swm-backend/swm.Dockerfile \
+                        -t swm-backend:latest \
+                        ./swm-backend
 
                     echo "Backend Docker image built successfully."
                 '''
@@ -71,62 +71,21 @@ pipeline {
         // =========================================================
 
         stage('Build Frontend Docker Image') {
-    steps {
+            steps {
+                sh '''
+                    echo "=============================================="
+                    echo "Building Smart Waste Frontend Docker Image"
+                    echo "=============================================="
 
-        withCredentials([
-            file(
-                credentialsId: 'swm-ssl-cert',
-                variable: 'SSL_CERT'
-            ),
-            file(
-                credentialsId: 'swm-ssl-key',
-                variable: 'SSL_KEY'
-            )
-        ]) 
-        {
+                    docker build \
+                        -f swm-frontend/swmfront.Dockerfile \
+                        -t swm-frontend:latest \
+                        ./swm-frontend
 
-            sh '''
-                echo "=============================================="
-                echo "Preparing SSL Certificates"
-                echo "=============================================="
-
-                mkdir -p swm-frontend/ssl
-
-                cp "$SSL_CERT" swm-frontend/ssl/swm.crt
-                cp "$SSL_KEY" swm-frontend/ssl/swm.key
-
-                chmod 600 swm-frontend/ssl/swm.key
-                chmod 644 swm-frontend/ssl/swm.crt
-
-                echo "SSL files prepared."
-                ls -l swm-frontend/ssl
-
-
-                echo "=============================================="
-                echo "Building Smart Waste Frontend Docker Image"
-                echo "=============================================="
-
-                docker build \
-                -f swm-frontend/swmfront.Dockerfile \
-                -t swm-frontend:latest \
-                ./swm-frontend
-
-                echo "Frontend Docker image built successfully."
-
-
-                echo "=============================================="
-                echo "Removing Temporary SSL Files"
-                echo "=============================================="
-
-                rm -f swm-frontend/ssl/swm.crt
-                rm -f swm-frontend/ssl/swm.key
-
-                echo "Temporary SSL files removed."
-            '''
-         }
-        
-    }
-}
+                    echo "Frontend Docker image built successfully."
+                '''
+            }
+        }
 
 
         // =========================================================
@@ -144,112 +103,117 @@ pipeline {
                 '''
             }
         }
-        stage('Prepare SWM Network') {
-    steps {
-        sh '''
-            echo "=============================================="
-            echo "Preparing SWM Docker Network"
-            echo "=============================================="
-
-            docker network inspect swm >/dev/null 2>&1 || \
-            docker network create swm
-
-            echo "SWM Docker network is ready."
-        '''
-    }
-}
 
 
         // =========================================================
-        // 6. DEPLOY BACKEND
+        // 6. PREPARE SWM NETWORK
+        // =========================================================
+
+        stage('Prepare SWM Network') {
+            steps {
+                sh '''
+                    echo "=============================================="
+                    echo "Preparing SWM Docker Network"
+                    echo "=============================================="
+
+                    docker network inspect swm >/dev/null 2>&1 || \
+                    docker network create swm
+
+                    echo "SWM Docker network is ready."
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 7. DEPLOY BACKEND
         // =========================================================
 
         stage('Deploy Backend') {
-    steps {
+            steps {
 
-        withCredentials([
-            file(
-                credentialsId: 'swm-backend-env',
-                variable: 'ENV_FILE'
-            )
-        ])
-        {
+                withCredentials([
+                    file(
+                        credentialsId: 'swm-backend-env',
+                        variable: 'ENV_FILE'
+                    )
+                ]) {
 
-            sh '''
-                echo "=============================================="
-                echo "Deploying Smart Waste Backend"
-                echo "=============================================="
+                    sh '''
+                        echo "=============================================="
+                        echo "Deploying Smart Waste Backend"
+                        echo "=============================================="
 
-                docker rm -f swm-backend-container || true
+                        docker rm -f swm-backend-container || true
 
-                docker run -d \
-                    --name swm-backend-container \
-                    --network swm \
-                    --env-file "$ENV_FILE" \
-                    -p 5000:5000 \
-                    swm-backend:latest
+                        docker run -d \
+                            --name swm-backend-container \
+                            --network swm \
+                            --env-file "$ENV_FILE" \
+                            -p 5000:5000 \
+                            swm-backend:latest
 
-                echo "Backend container started successfully."
-            '''
+                        echo "Backend container started successfully."
+                    '''
+                }
+            }
         }
-    }
-}
 
 
         // =========================================================
-        // 7. DEPLOY FRONTEND
+        // 8. DEPLOY FRONTEND
         // =========================================================
 
         stage('Deploy Frontend') {
-    steps {
-        sh '''
-            echo "=============================================="
-            echo "Deploying Smart Waste Frontend"
-            echo "=============================================="
+            steps {
+                sh '''
+                    echo "=============================================="
+                    echo "Deploying Smart Waste Frontend"
+                    echo "=============================================="
 
-            docker rm -f swm-frontend-container || true
+                    docker rm -f swm-frontend-container || true
 
-            stage('Deploy Frontend')
-            {
-    steps {
-        sh '''
-            docker rm -f swm-frontend-container || true
+                    docker run -d \
+                        --name swm-frontend-container \
+                        --network swm \
+                        -p 5443:5443 \
+                        swm-frontend:latest
 
-            docker run -d \
-                --name swm-frontend-container \
-                --network swm \
-                -p 5443:5443 \
-                swm-frontend:latest
+                    echo "Frontend container started."
 
-            sleep 10
+                    sleep 10
 
-            docker exec swm-frontend-container node -e "
-            fetch('http://localhost:5443/swm/')
-            .then(r => {
-                console.log('Frontend HTTP Status:', r.status);
-                if (r.status >= 200 && r.status < 500) {
-                    console.log('Frontend application is responding!');
-                    process.exit(0);
-                } else {
-                    process.exit(1);
-                }
-            })
-            .catch(e => {
-                console.error('Frontend connection failed:', e);
-                process.exit(1);
-            });
-            "
-        '''
-    }
-}
-            echo "Frontend container started successfully."
-        '''
-    }
-}
+                    echo "=============================================="
+                    echo "Frontend Deployment Check"
+                    echo "=============================================="
+
+                    docker exec swm-frontend-container node -e "
+                    fetch('http://localhost:5443/swm/')
+                    .then(r => {
+                        console.log('Frontend HTTP Status:', r.status);
+
+                        if (r.status >= 200 && r.status < 500) {
+                            console.log('Frontend application is responding!');
+                            process.exit(0);
+                        } else {
+                            console.error('Frontend health check failed!');
+                            process.exit(1);
+                        }
+                    })
+                    .catch(e => {
+                        console.error('Frontend connection failed:', e);
+                        process.exit(1);
+                    });
+                    "
+
+                    echo "Frontend deployment check completed successfully."
+                '''
+            }
+        }
 
 
         // =========================================================
-        // 8. CHECK CONTAINERS
+        // 9. CHECK CONTAINERS
         // =========================================================
 
         stage('Check Containers') {
@@ -260,14 +224,14 @@ pipeline {
                     echo "=============================================="
 
                     docker ps \
-                    --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Ports}}"
+                        --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Ports}}"
                 '''
             }
         }
 
 
         // =========================================================
-        // 9. HEALTH CHECK
+        // 10. HEALTH CHECK
         // =========================================================
 
         stage('Health Check') {
@@ -303,24 +267,41 @@ pipeline {
 
 
                     echo "=============================================="
-echo "Frontend Health Check"
-echo "=============================================="
+                    echo "Frontend Health Check"
+                    echo "=============================================="
 
-docker exec swm-frontend-container nginx -t
+                    docker exec swm-frontend-container \
+                    node -e "
+                        fetch('http://localhost:5443/swm/')
+                        .then(r => {
+                            console.log('Frontend HTTP Status:', r.status);
 
-docker exec swm-frontend-container sh -c \
-    'test -f /usr/share/nginx/html/index.html'
+                            if (r.status >= 200 && r.status < 500) {
+                                console.log('Frontend application is responding!');
+                                process.exit(0);
+                            } else {
+                                console.log('Frontend health check failed!');
+                                process.exit(1);
+                            }
+                        })
+                        .catch(e => {
+                            console.error('Frontend connection failed:', e);
+                            process.exit(1);
+                        })
+                    "
 
-echo "Frontend Nginx configuration is valid."
-echo "Frontend index.html exists."
-echo "Frontend is responding successfully."
+                    echo "Frontend is responding successfully."
+
+                    echo "=============================================="
+                    echo "All Health Checks Passed"
+                    echo "=============================================="
                 '''
             }
         }
 
 
         // =========================================================
-        // 10. LOGIN TO HARBOR
+        // 11. LOGIN TO HARBOR
         // =========================================================
 
         stage('Login to Harbor') {
@@ -340,9 +321,9 @@ echo "Frontend is responding successfully."
                         echo "=============================================="
 
                         echo "$HARBOR_PASSWORD" | docker login \
-                        "$HARBOR_REGISTRY" \
-                        -u "$HARBOR_USER" \
-                        --password-stdin
+                            "$HARBOR_REGISTRY" \
+                            -u "$HARBOR_USER" \
+                            --password-stdin
 
                         echo "Successfully logged in to Harbor."
                     '''
@@ -352,7 +333,7 @@ echo "Frontend is responding successfully."
 
 
         // =========================================================
-        // 11. TAG IMAGES
+        // 12. TAG IMAGES
         // =========================================================
 
         stage('Tag Images for Harbor') {
@@ -365,23 +346,23 @@ echo "Frontend is responding successfully."
                     echo "----- Backend Tags -----"
 
                     docker tag \
-                    swm-backend:latest \
-                    "$BACKEND_IMAGE:build-${BUILD_NUMBER}"
+                        swm-backend:latest \
+                        "$BACKEND_IMAGE:build-${BUILD_NUMBER}"
 
                     docker tag \
-                    swm-backend:latest \
-                    "$BACKEND_IMAGE:latest"
+                        swm-backend:latest \
+                        "$BACKEND_IMAGE:latest"
 
 
                     echo "----- Frontend Tags -----"
 
                     docker tag \
-                    swm-frontend:latest \
-                    "$FRONTEND_IMAGE:build-${BUILD_NUMBER}"
+                        swm-frontend:latest \
+                        "$FRONTEND_IMAGE:build-${BUILD_NUMBER}"
 
                     docker tag \
-                    swm-frontend:latest \
-                    "$FRONTEND_IMAGE:latest"
+                        swm-frontend:latest \
+                        "$FRONTEND_IMAGE:latest"
 
 
                     echo "=============================================="
@@ -395,7 +376,7 @@ echo "Frontend is responding successfully."
 
 
         // =========================================================
-        // 12. PUSH IMAGES TO HARBOR
+        // 13. PUSH IMAGES TO HARBOR
         // =========================================================
 
         stage('Push Images to Harbor') {
@@ -406,10 +387,10 @@ echo "Frontend is responding successfully."
                     echo "=============================================="
 
                     docker push \
-                    "$BACKEND_IMAGE:build-${BUILD_NUMBER}"
+                        "$BACKEND_IMAGE:build-${BUILD_NUMBER}"
 
                     docker push \
-                    "$BACKEND_IMAGE:latest"
+                        "$BACKEND_IMAGE:latest"
 
 
                     echo "=============================================="
@@ -417,10 +398,10 @@ echo "Frontend is responding successfully."
                     echo "=============================================="
 
                     docker push \
-                    "$FRONTEND_IMAGE:build-${BUILD_NUMBER}"
+                        "$FRONTEND_IMAGE:build-${BUILD_NUMBER}"
 
                     docker push \
-                    "$FRONTEND_IMAGE:latest"
+                        "$FRONTEND_IMAGE:latest"
 
 
                     echo "=============================================="
@@ -432,7 +413,7 @@ echo "Frontend is responding successfully."
 
 
         // =========================================================
-        // 13. LOGOUT FROM HARBOR
+        // 14. LOGOUT FROM HARBOR
         // =========================================================
 
         stage('Logout from Harbor') {
