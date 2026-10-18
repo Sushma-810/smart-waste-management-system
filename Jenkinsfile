@@ -210,11 +210,10 @@ pipeline {
             docker rm -f swm-frontend-container || true
 
             docker run -d \
-                --name swm-frontend-container \
-                --network swm \
-                -p 5173:80 \
-                -p 5443:443 \
-                swm-frontend:latest
+    --name swm-frontend-container \
+    --network swm \
+    -p 5443:5443 \
+    swm-frontend:latest
 
             echo "Frontend container started successfully."
         '''
