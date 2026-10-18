@@ -209,12 +209,39 @@ pipeline {
 
             docker rm -f swm-frontend-container || true
 
-            docker run -d \
-    --name swm-frontend-container \
-    --network swm \
-    -p 5443:5443 \
-    swm-frontend:latest
+            stage('Deploy Frontend')
+            {
+    steps {
+        sh '''
+            docker rm -f swm-frontend-container || true
 
+            docker run -d \
+                --name swm-frontend-container \
+                --network swm \
+                -p 5443:5443 \
+                swm-frontend:latest
+
+            sleep 10
+
+            docker exec swm-frontend-container node -e "
+            fetch('http://localhost:5443/swm/')
+            .then(r => {
+                console.log('Frontend HTTP Status:', r.status);
+                if (r.status >= 200 && r.status < 500) {
+                    console.log('Frontend application is responding!');
+                    process.exit(0);
+                } else {
+                    process.exit(1);
+                }
+            })
+            .catch(e => {
+                console.error('Frontend connection failed:', e);
+                process.exit(1);
+            });
+            "
+        '''
+    }
+}
             echo "Frontend container started successfully."
         '''
     }
