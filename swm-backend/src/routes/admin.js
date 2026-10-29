@@ -1,32 +1,130 @@
+
 import { Router } from 'express';
-import { STATUSES, db, findComplaint, findComplaints } from '../db.js';
+import {
+  STATUSES,
+  db,
+  findComplaint,
+  findComplaints
+} from '../db.js';
 import { requireAdmin, requireAuth } from '../middleware.js';
 
 const router = Router();
+
 router.use(requireAuth, requireAdmin);
 
-router.get('/complaints', (_req, res) => res.json(findComplaints()));
+// Get all complaints
+router.get('/complaints', async (_req, res) => {
+  try {
+    const complaints = await findComplaints();
+    res.json(complaints);
+  } catch (error) {
+    console.error('Failed to fetch complaints:', error);
 
-router.get('/complaints/:id', (req, res) => {
-  const c = findComplaint(Number(req.params.id));
-  if (!c) return res.status(404).json({ message: 'Complaint not found.' });
-  res.json(c);
+    res.status(500).json({
+      message: 'Failed to fetch complaints.'
+    });
+  }
 });
 
-router.patch('/complaints/:id', (req, res) => {
-  const id = Number(req.params.id);
-  const current = findComplaint(id);
-  if (!current) return res.status(404).json({ message: 'Complaint not found.' });
-  const { status, assignedTo } = req.body;
-  if (status !== undefined && !STATUSES.includes(status)) return res.status(400).json({ message: 'Invalid status.' });
+// Get one complaint
+router.get('/complaints/:id', async (req, res) => {
+  try {
+    const c = await findComplaint(Number(req.params.id));
 
-  if (assignedTo !== undefined)
-    db.prepare('UPDATE complaints SET assigned_to = ? WHERE id = ?').run(String(assignedTo).trim(), id);
-  if (status !== undefined && status !== current.status) {
-    db.prepare('UPDATE complaints SET status = ? WHERE id = ?').run(status, id);
-    db.prepare('INSERT INTO history (complaint_id, status, at) VALUES (?, ?, ?)').run(id, status, new Date().toISOString());
+    if (!c) {
+      return res.status(404).json({
+        message: 'Complaint not found.'
+      });
+    }
+
+    res.json(c);
+  } catch (error) {
+    console.error('Failed to fetch complaint:', error);
+
+    res.status(500).json({
+      message: 'Failed to fetch complaint.'
+    });
   }
-  res.json(findComplaint(id));
+});
+
+// Update complaint status / assignment
+router.patch('/complaints/:id', async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+
+    const current = await findComplaint(id);
+
+    if (!current) {
+      return res.status(404).json({
+        message: 'Complaint not found.'
+      });
+    }
+
+    const { status, assignedTo } = req.body;
+
+    if (
+      status !== undefined &&
+      !STATUSES.includes(status)
+    ) {
+      return res.status(400).json({
+        message: 'Invalid status.'
+      });
+    }
+
+    // Update assigned staff
+    if (assignedTo !== undefined) {
+      await db.query(
+        `UPDATE complaints
+         SET assigned_to = $1
+         WHERE id = $2`,
+        [
+          String(assignedTo).trim(),
+          id
+        ]
+      );
+    }
+
+    // Update status
+    if (
+      status !== undefined &&
+      status !== current.status
+    ) {
+      const now = new Date().toISOString();
+
+      await db.query(
+        `UPDATE complaints
+         SET status = $1
+         WHERE id = $2`,
+        [
+          status,
+          id
+        ]
+      );
+
+      // Add status change to history
+      await db.query(
+        `INSERT INTO history
+         (complaint_id, status, at)
+         VALUES ($1, $2, $3)`,
+        [
+          id,
+          status,
+          now
+        ]
+      );
+    }
+
+    const updatedComplaint = await findComplaint(id);
+
+    res.json(updatedComplaint);
+
+  } catch (error) {
+    console.error('Failed to update complaint:', error);
+
+    res.status(500).json({
+      message: 'Failed to update complaint.'
+    });
+  }
 });
 
 export default router;
