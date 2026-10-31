@@ -2,148 +2,68 @@ pipeline {
     agent any
 
     environment {
-        HARBOR_REGISTRY = '172.28.63.77:8081'
-        HARBOR_PROJECT  = 'smart-waste-management'
+        HARBOR_REGISTRY = "172.28.63.77:8081"
+        HARBOR_PROJECT = "smart-waste-management"
 
-        BACKEND_IMAGE   = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-backend"
-        FRONTEND_IMAGE  = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-frontend"
+        BACKEND_IMAGE = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-backend"
+        FRONTEND_IMAGE = "${HARBOR_REGISTRY}/${HARBOR_PROJECT}/swm-frontend"
     }
 
     stages {
 
-        // =========================================================
-        // 1. CHECKOUT
-        // =========================================================
-
         stage('Checkout') {
             steps {
-                echo '===== Checking Out Smart Waste Management Source Code ====='
-
+                echo "Checking out source code..."
                 checkout scm
             }
         }
 
-
-        // =========================================================
-        // 2. CLEAN OLD CONTAINERS
-        // =========================================================
-
-        stage('Cleanup Old Containers') {
+        stage('Build Backend Image') {
             steps {
+                echo "Building backend Docker image..."
+
                 sh '''
-                    echo "=============================================="
-                    echo "Removing Old Smart Waste Containers"
-                    echo "=============================================="
-
-                    docker rm -f swm-backend-container || true
-                    docker rm -f swm-frontend-container || true
-
-                    echo "Old containers removed successfully."
-                '''
-            }
-        }
-
-
-        // =========================================================
-        // 3. BUILD BACKEND IMAGE
-        // =========================================================
-
-        stage('Build Backend Docker Image') {
-            steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Building Smart Waste Backend Docker Image"
-                    echo "=============================================="
-
                     docker build \
                         -f swm-backend/swm.Dockerfile \
                         -t swm-backend:latest \
-                        ./swm-backend
-
-                    echo "Backend Docker image built successfully."
+                        swm-backend
                 '''
             }
         }
 
-
-        // =========================================================
-        // 4. BUILD FRONTEND IMAGE
-        // =========================================================
-
-        stage('Build Frontend Docker Image') {
+        stage('Build Frontend Image') {
             steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Building Smart Waste Frontend Docker Image"
-                    echo "=============================================="
+                echo "Building frontend Docker image..."
 
+                sh '''
                     docker build \
                         -f swm-frontend/swmfront.Dockerfile \
                         -t swm-frontend:latest \
-                        ./swm-frontend
-
-                    echo "Frontend Docker image built successfully."
+                        swm-frontend
                 '''
             }
         }
 
-
-        // =========================================================
-        // 5. SHOW LOCAL IMAGES
-        // =========================================================
-
-        stage('Show Docker Images') {
+        stage('Prepare Docker Network') {
             steps {
+                echo "Preparing Docker network..."
+
                 sh '''
-                    echo "=============================================="
-                    echo "Smart Waste Docker Images"
-                    echo "=============================================="
-
-                    docker images | grep swm-
-                '''
-            }
-        }
-
-
-        // =========================================================
-        // 6. PREPARE SWM NETWORK
-        // =========================================================
-
-        stage('Prepare SWM Network') {
-            steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Preparing SWM Docker Network"
-                    echo "=============================================="
-
                     docker network inspect swm >/dev/null 2>&1 || \
                     docker network create swm
-
-                    echo "SWM Docker network is ready."
                 '''
             }
         }
 
-
-        // =========================================================
-        // 7. DEPLOY BACKEND
-        // =========================================================
-
-        stage('Deploy Backend') {
+        stage('Deploy Backend Container') {
             steps {
+                echo "Deploying backend container..."
 
-                withCredentials([
-                    file(
-                        credentialsId: 'swm-backend-env',
-                        variable: 'ENV_FILE'
-                    )
-                ]) {
-
+                withCredentials([file(
+                    credentialsId: 'swm-backend-env',
+                    variable: 'ENV_FILE'
+                )]) {
                     sh '''
-                        echo "=============================================="
-                        echo "Deploying Smart Waste Backend"
-                        echo "=============================================="
-
                         docker rm -f swm-backend-container || true
 
                         docker run -d \
@@ -152,25 +72,16 @@ pipeline {
                             --env-file "$ENV_FILE" \
                             -p 5000:5000 \
                             swm-backend:latest
-
-                        echo "Backend container started successfully."
                     '''
                 }
             }
         }
 
-
-        // =========================================================
-        // 8. DEPLOY FRONTEND
-        // =========================================================
-
-        stage('Deploy Frontend') {
+        stage('Deploy Frontend Container') {
             steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Deploying Smart Waste Frontend"
-                    echo "=============================================="
+                echo "Deploying frontend container..."
 
+                sh '''
                     docker rm -f swm-frontend-container || true
 
                     docker run -d \
@@ -178,119 +89,56 @@ pipeline {
                         --network swm \
                         -p 5443:5443 \
                         swm-frontend:latest
-
-                    echo "Frontend container started."
-
-                    sleep 10
-
-                    echo "=============================================="
-                    echo "Frontend Deployment Check"
-                    echo "=============================================="
-
-                    docker exec swm-frontend-container node -e "
-                    fetch('http://localhost:5443/swm/')
-                    .then(r => {
-                        console.log('Frontend HTTP Status:', r.status);
-
-                        if (r.status >= 200 && r.status < 500) {
-                            console.log('Frontend application is responding!');
-                            process.exit(0);
-                        } else {
-                            console.error('Frontend health check failed!');
-                            process.exit(1);
-                        }
-                    })
-                    .catch(e => {
-                        console.error('Frontend connection failed:', e);
-                        process.exit(1);
-                    });
-                    "
-
-                    echo "Frontend deployment check completed successfully."
                 '''
             }
         }
 
-
-        // =========================================================
-        // 9. CHECK CONTAINERS
-        // =========================================================
-
-        stage('Check Containers') {
+        stage('Backend Health Check') {
             steps {
+                echo "Checking backend health..."
+
                 sh '''
-                    echo "=============================================="
-                    echo "Smart Waste Running Containers"
-                    echo "=============================================="
-
-                    docker ps \
-                        --format "table {{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Ports}}"
-                '''
-            }
-        }
-
-
-        // =========================================================
-        // 10. HEALTH CHECK
-        // =========================================================
-
-        stage('Health Check') {
-            steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Backend Health Check"
-                    echo "=============================================="
-
                     echo "Waiting for backend to become ready..."
 
-for i in {1..12}; do
-    if docker exec swm-backend-container \
-    node -e "
-        fetch('http://localhost:5000/api/health')
-        .then(r => {
-            console.log('Backend HTTP Status:', r.status);
-            process.exit(r.status >= 200 && r.status < 500 ? 0 : 1);
-        })
-        .catch(() => process.exit(1));
-    "
-    then
-        echo "Backend is ready!"
-        break
-    fi
+                    for i in $(seq 1 12); do
 
-    echo "Backend not ready yet... attempt $i/12"
-    sleep 5
+                        if docker exec swm-backend-container \
+                        node -e "
+                            fetch('http://localhost:5000/api/health')
+                            .then(r => {
+                                console.log('Backend HTTP Status:', r.status);
+                                process.exit(
+                                    r.status >= 200 && r.status < 500 ? 0 : 1
+                                );
+                            })
+                            .catch(() => process.exit(1));
+                        "
+                        then
+                            echo "Backend is ready!"
+                            break
+                        fi
 
-    if [ "$i" -eq 12 ]; then
-        echo "Backend failed to become ready."
-        docker logs swm-backend-container --tail 50
-        exit 1
-    fi
-done
-                        fetch('http://localhost:5000/api/health')
-                        .then(r => {
-                            console.log('Backend HTTP Status:', r.status);
+                        echo "Backend not ready yet... attempt $i/12"
+                        sleep 5
 
-                            if (r.status >= 200 && r.status < 500) {
-                                console.log('Backend application is responding!');
-                                process.exit(0);
-                            } else {
-                                console.log('Backend health check failed!');
-                                process.exit(1);
-                            }
-                        })
-                        .catch(e => {
-                            console.error('Backend connection failed:', e);
-                            process.exit(1);
-                        })
-                    "
+                        if [ "$i" -eq 12 ]; then
+                            echo "Backend failed to become ready."
+                            echo "Backend container logs:"
+                            docker logs swm-backend-container --tail 50
+                            exit 1
+                        fi
 
-                    echo "Backend is responding successfully."
+                    done
+                '''
+            }
+        }
 
+        stage('Frontend Health Check') {
+            steps {
+                echo "Checking frontend health..."
 
-                    echo "=============================================="
-                    echo "Frontend Health Check"
-                    echo "=============================================="
+                sh '''
+                    sleep 3
 
                     docker exec swm-frontend-container \
                     node -e "
@@ -302,198 +150,100 @@ done
                                 console.log('Frontend application is responding!');
                                 process.exit(0);
                             } else {
-                                console.log('Frontend health check failed!');
+                                console.error('Frontend health check failed!');
                                 process.exit(1);
                             }
                         })
                         .catch(e => {
                             console.error('Frontend connection failed:', e);
                             process.exit(1);
-                        })
+                        });
                     "
-
-                    echo "Frontend is responding successfully."
-
-                    echo "=============================================="
-                    echo "All Health Checks Passed"
-                    echo "=============================================="
                 '''
             }
         }
 
-
-        // =========================================================
-        // 11. LOGIN TO HARBOR
-        // =========================================================
-
-        stage('Login to Harbor') {
+        stage('Push Backend Image to Harbor') {
             steps {
+                echo "Pushing backend image to Harbor..."
 
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'harbor-credentials',
-                        usernameVariable: 'HARBOR_USER',
-                        passwordVariable: 'HARBOR_PASSWORD'
-                    )
-                ]) {
-
-                    sh '''
-                        echo "=============================================="
-                        echo "Login to Harbor Registry"
-                        echo "=============================================="
-
-                        echo "$HARBOR_PASSWORD" | docker login \
-                            "$HARBOR_REGISTRY" \
-                            -u "$HARBOR_USER" \
-                            --password-stdin
-
-                        echo "Successfully logged in to Harbor."
-                    '''
-                }
-            }
-        }
-
-
-        // =========================================================
-        // 12. TAG IMAGES
-        // =========================================================
-
-        stage('Tag Images for Harbor') {
-            steps {
                 sh '''
-                    echo "=============================================="
-                    echo "Creating Harbor Image Tags"
-                    echo "=============================================="
-
-                    echo "----- Backend Tags -----"
-
                     docker tag \
                         swm-backend:latest \
-                        "$BACKEND_IMAGE:build-${BUILD_NUMBER}"
+                        ${BACKEND_IMAGE}:latest
 
-                    docker tag \
-                        swm-backend:latest \
-                        "$BACKEND_IMAGE:latest"
-
-
-                    echo "----- Frontend Tags -----"
-
-                    docker tag \
-                        swm-frontend:latest \
-                        "$FRONTEND_IMAGE:build-${BUILD_NUMBER}"
-
-                    docker tag \
-                        swm-frontend:latest \
-                        "$FRONTEND_IMAGE:latest"
-
-
-                    echo "=============================================="
-                    echo "Harbor Tags Created"
-                    echo "=============================================="
-
-                    docker images | grep smart-waste-management
+                    docker push \
+                        ${BACKEND_IMAGE}:latest
                 '''
             }
         }
 
-
-        // =========================================================
-        // 13. PUSH IMAGES TO HARBOR
-        // =========================================================
-
-        stage('Push Images to Harbor') {
+        stage('Push Frontend Image to Harbor') {
             steps {
+                echo "Pushing frontend image to Harbor..."
+
                 sh '''
-                    echo "=============================================="
-                    echo "Pushing Backend Image to Harbor"
-                    echo "=============================================="
+                    docker tag \
+                        swm-frontend:latest \
+                        ${FRONTEND_IMAGE}:latest
 
                     docker push \
-                        "$BACKEND_IMAGE:build-${BUILD_NUMBER}"
-
-                    docker push \
-                        "$BACKEND_IMAGE:latest"
-
-
-                    echo "=============================================="
-                    echo "Pushing Frontend Image to Harbor"
-                    echo "=============================================="
-
-                    docker push \
-                        "$FRONTEND_IMAGE:build-${BUILD_NUMBER}"
-
-                    docker push \
-                        "$FRONTEND_IMAGE:latest"
-
-
-                    echo "=============================================="
-                    echo "All Images Pushed Successfully"
-                    echo "=============================================="
-                '''
-            }
-        }
-
-
-        // =========================================================
-        // 14. LOGOUT FROM HARBOR
-        // =========================================================
-
-        stage('Logout from Harbor') {
-            steps {
-                sh '''
-                    echo "=============================================="
-                    echo "Logging Out From Harbor"
-                    echo "=============================================="
-
-                    docker logout "$HARBOR_REGISTRY" || true
-
-                    echo "Harbor logout completed."
+                        ${FRONTEND_IMAGE}:latest
                 '''
             }
         }
     }
 
-
-    // =============================================================
-    // POST BUILD
-    // =============================================================
-
     post {
-
         success {
             echo '''
-==============================================
-SMART WASTE MANAGEMENT CI/CD SUCCESS
-==============================================
+            ==========================================
+            Smart Waste Management Deployment SUCCESS
+            ==========================================
 
-Source code checkout       : SUCCESS
-Old containers cleanup     : SUCCESS
-Backend image build        : SUCCESS
-Frontend image build       : SUCCESS
-Backend deployment         : SUCCESS
-Frontend deployment        : SUCCESS
-Health checks              : SUCCESS
-Harbor login               : SUCCESS
-Images tagged              : SUCCESS
-Images pushed to Harbor    : SUCCESS
-Harbor logout              : SUCCESS
+            Backend:
+              Container: swm-backend-container
+              Port: 5000
+              RDS PostgreSQL: Connected through environment
 
-Smart Waste Management CI/CD completed successfully.
-==============================================
-'''
+            Frontend:
+              Container: swm-frontend-container
+              Port: 5443
+
+            Harbor:
+              Backend and Frontend images pushed successfully.
+
+            ==========================================
+            '''
         }
 
         failure {
             echo '''
-==============================================
-SMART WASTE MANAGEMENT CI/CD FAILED
-==============================================
+            ==========================================
+            Smart Waste Management Deployment FAILED
+            ==========================================
 
-Please check the Jenkins console output
-for the failed stage.
+            Check Jenkins console output and container logs.
 
-==============================================
-'''
+            ==========================================
+            '''
+
+            sh '''
+                echo "Running containers:"
+                docker ps -a --filter "name=swm-"
+
+                echo ""
+                echo "Backend logs:"
+                docker logs swm-backend-container --tail 50 2>/dev/null || true
+
+                echo ""
+                echo "Frontend logs:"
+                docker logs swm-frontend-container --tail 50 2>/dev/null || true
+            '''
+        }
+
+        always {
+            echo "Jenkins pipeline completed."
         }
     }
 }
