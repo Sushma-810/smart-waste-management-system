@@ -126,30 +126,38 @@ pipeline {
         // 6. DEPLOY BACKEND CONTAINER
         // =====================================================
         stage('Deploy Backend Container') {
-            steps {
-                echo '========== DEPLOY BACKEND =========='
+    steps {
+        echo '========== DEPLOY BACKEND =========='
 
-                withCredentials([
-                    file(
-                        credentialsId: 'swm-backend-env',
-                        variable: 'ENV_FILE'
-                    )
-                ]) {
-                    sh '''
-                        docker run -d \
-                            --name ${BACKEND_CONTAINER} \
-                            --network ${SWM_NETWORK} \
-                            --env-file "$ENV_FILE" \
-                            -p 5000:5000 \
-                            ${BACKEND_LOCAL_IMAGE}
+        withCredentials([
+            file(
+                credentialsId: 'swm-backend-env',
+                variable: 'ENV_FILE'
+            ),
+            usernamePassword(
+                credentialsId: 'aws-s3-credentials',
+                usernameVariable: 'AWS_ACCESS_KEY_ID',
+                passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+            )
+        ]) {
+            sh '''
+                docker run -d \
+                    --name ${BACKEND_CONTAINER} \
+                    --network ${SWM_NETWORK} \
+                    --env-file "$ENV_FILE" \
+                    -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+                    -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+                    -e AWS_DEFAULT_REGION="us-east-1" \
+                    -p 5000:5000 \
+                    ${BACKEND_LOCAL_IMAGE}
 
-                        echo "Backend container started."
+                echo "Backend container started."
 
-                        docker ps --filter "name=${BACKEND_CONTAINER}"
-                    '''
-                }
-            }
+                docker ps --filter "name=${BACKEND_CONTAINER}"
+            '''
         }
+    }
+}
 
         // =====================================================
         // 7. TEST BACKEND
