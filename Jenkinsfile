@@ -245,7 +245,7 @@ pipeline {
 
                     docker exec swm-backend-container \
                     node -e "
-                        fetch('http://localhost:5000')
+                        fetch('http://localhost:5000/api/health')
                         .then(r => {
                             console.log('Backend HTTP Status:', r.status);
 
