@@ -241,10 +241,32 @@ pipeline {
                     echo "Backend Health Check"
                     echo "=============================================="
 
-                    sleep 3
+                    echo "Waiting for backend to become ready..."
 
-                    docker exec swm-backend-container \
-                    node -e "
+for i in {1..12}; do
+    if docker exec swm-backend-container \
+    node -e "
+        fetch('http://localhost:5000/api/health')
+        .then(r => {
+            console.log('Backend HTTP Status:', r.status);
+            process.exit(r.status >= 200 && r.status < 500 ? 0 : 1);
+        })
+        .catch(() => process.exit(1));
+    "
+    then
+        echo "Backend is ready!"
+        break
+    fi
+
+    echo "Backend not ready yet... attempt $i/12"
+    sleep 5
+
+    if [ "$i" -eq 12 ]; then
+        echo "Backend failed to become ready."
+        docker logs swm-backend-container --tail 50
+        exit 1
+    fi
+done
                         fetch('http://localhost:5000/api/health')
                         .then(r => {
                             console.log('Backend HTTP Status:', r.status);
