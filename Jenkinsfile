@@ -1,6 +1,11 @@
-pipeline {
+kpipeline {
 
     agent any
+
+    options {
+        skipDefaultCheckout(true)
+        timestamps()
+    }
 
     environment {
 
@@ -38,7 +43,7 @@ pipeline {
     stages {
 
         // =========================================================
-        // 1. CHECK JENKINS ENVIRONMENT
+        // 1. CHECK ENVIRONMENT
         // =========================================================
         stage('Check Environment') {
 
@@ -77,7 +82,7 @@ pipeline {
 
 
         // =========================================================
-        // 2. CHECKOUT CODE
+        // 2. CHECKOUT
         // =========================================================
         stage('Checkout') {
 
@@ -99,21 +104,21 @@ pipeline {
 
                 sh '''
                     echo "=============================================="
-                    echo "CLEANING OLD CONTAINERS"
+                    echo "CLEANING OLD SWM CONTAINERS"
                     echo "=============================================="
 
                     docker rm -f ${BACKEND_CONTAINER} 2>/dev/null || true
                     docker rm -f ${FRONTEND_CONTAINER} 2>/dev/null || true
 
                     echo ""
-                    echo "Old SWM containers removed."
+                    echo "Old containers removed."
                 '''
             }
         }
 
 
         // =========================================================
-        // 4. CLEAN OLD IMAGES
+        // 4. CLEAN OLD LOCAL IMAGES
         // =========================================================
         stage('Cleanup Old Images') {
 
@@ -121,14 +126,14 @@ pipeline {
 
                 sh '''
                     echo "=============================================="
-                    echo "CLEANING OLD IMAGES"
+                    echo "CLEANING OLD SWM IMAGES"
                     echo "=============================================="
 
                     docker image rm ${BACKEND_LOCAL_IMAGE} 2>/dev/null || true
                     docker image rm ${FRONTEND_LOCAL_IMAGE} 2>/dev/null || true
 
                     echo ""
-                    echo "Old SWM images removed."
+                    echo "Old images removed."
                 '''
             }
         }
@@ -152,7 +157,7 @@ pipeline {
                         ./swm-backend
 
                     echo ""
-                    echo "Backend Docker image built successfully."
+                    echo "Backend image built successfully."
                 '''
             }
         }
@@ -176,14 +181,14 @@ pipeline {
                         ./swm-frontend
 
                     echo ""
-                    echo "Frontend Docker image built successfully."
+                    echo "Frontend image built successfully."
                 '''
             }
         }
 
 
         // =========================================================
-        // 7. SHOW CREATED IMAGES
+        // 7. SHOW IMAGES
         // =========================================================
         stage('Show Docker Images') {
 
@@ -191,7 +196,7 @@ pipeline {
 
                 sh '''
                     echo "=============================================="
-                    echo "CREATED DOCKER IMAGES"
+                    echo "SWM DOCKER IMAGES"
                     echo "=============================================="
 
                     docker images | grep -E "swm-backend|swm-frontend" || true
@@ -201,7 +206,7 @@ pipeline {
 
 
         // =========================================================
-        // 8. CREATE / CHECK NETWORK
+        // 8. PREPARE NETWORK
         // =========================================================
         stage('Prepare SWM Network') {
 
@@ -209,7 +214,7 @@ pipeline {
 
                 sh '''
                     echo "=============================================="
-                    echo "PREPARING SWM DOCKER NETWORK"
+                    echo "PREPARING SWM NETWORK"
                     echo "=============================================="
 
                     if docker network inspect ${SWM_NETWORK} >/dev/null 2>&1
@@ -221,7 +226,7 @@ pipeline {
                     fi
 
                     echo ""
-                    echo "Network ready."
+                    echo "Network is ready."
                 '''
             }
         }
@@ -254,7 +259,7 @@ pipeline {
                             ${BACKEND_LOCAL_IMAGE}
 
                         echo ""
-                        echo "Backend container started."
+                        echo "Backend container created."
 
                         docker ps \
                             --filter "name=${BACKEND_CONTAINER}"
@@ -265,7 +270,76 @@ pipeline {
 
 
         // =========================================================
-        // 10. BACKEND HEALTH CHECK
+        // 10. WAIT FOR BACKEND
+        // =========================================================
+        stage('Wait for Backend') {
+
+            steps {
+
+                sh '''
+                    echo "=============================================="
+                    echo "WAITING FOR BACKEND"
+                    echo "=============================================="
+
+                    echo "Waiting for backend to start..."
+
+                    SUCCESS=0
+
+                    for i in $(seq 1 30)
+                    do
+                        echo "Attempt $i/30..."
+
+                        if docker exec ${BACKEND_CONTAINER} node -e "
+                            fetch('http://127.0.0.1:5000/api/health')
+                              .then(response => {
+                                  if (response.ok) {
+                                      process.exit(0);
+                                  } else {
+                                      process.exit(1);
+                                  }
+                              })
+                              .catch(() => {
+                                  process.exit(1);
+                              });
+                        "
+                        then
+                            echo ""
+                            echo "Backend is ready."
+                            SUCCESS=1
+                            break
+                        fi
+
+                        sleep 2
+                    done
+
+                    if [ "$SUCCESS" -ne 1 ]
+                    then
+                        echo ""
+                        echo "=============================================="
+                        echo "BACKEND FAILED TO START"
+                        echo "=============================================="
+
+                        echo ""
+                        echo "Container status:"
+                        docker ps -a --filter "name=${BACKEND_CONTAINER}"
+
+                        echo ""
+                        echo "Backend logs:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 || true
+
+                        echo ""
+                        echo "Listening ports inside backend:"
+                        docker exec ${BACKEND_CONTAINER} sh -c "ss -lntp || netstat -lntp || true"
+
+                        exit 1
+                    fi
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 11. BACKEND HEALTH CHECK
         // =========================================================
         stage('Backend Health Check') {
 
@@ -276,10 +350,8 @@ pipeline {
                     echo "BACKEND HEALTH CHECK"
                     echo "=============================================="
 
-                    sleep 5
-
                     docker exec ${BACKEND_CONTAINER} node -e "
-                        fetch('http://localhost:5000/api/health')
+                        fetch('http://127.0.0.1:5000/api/health')
                           .then(async response => {
 
                               const body = await response.text();
@@ -294,10 +366,9 @@ pipeline {
                           })
                           .catch(error => {
 
-                              console.error('Backend health check failed:');
                               console.error(error);
-
                               process.exit(1);
+
                           });
                     "
 
@@ -309,7 +380,7 @@ pipeline {
 
 
         // =========================================================
-        // 11. TEST STATISTICS API
+        // 12. TEST STATISTICS API
         // =========================================================
         stage('Test Statistics API') {
 
@@ -321,7 +392,7 @@ pipeline {
                     echo "=============================================="
 
                     docker exec ${BACKEND_CONTAINER} node -e "
-                        fetch('http://localhost:5000/api/stats')
+                        fetch('http://127.0.0.1:5000/api/stats')
                           .then(async response => {
 
                               const body = await response.text();
@@ -336,10 +407,9 @@ pipeline {
                           })
                           .catch(error => {
 
-                              console.error('Statistics API test failed:');
                               console.error(error);
-
                               process.exit(1);
+
                           });
                     "
 
@@ -351,7 +421,7 @@ pipeline {
 
 
         // =========================================================
-        // 12. DEPLOY FRONTEND
+        // 13. DEPLOY FRONTEND
         // =========================================================
         stage('Deploy Frontend') {
 
@@ -369,7 +439,7 @@ pipeline {
                         ${FRONTEND_LOCAL_IMAGE}
 
                     echo ""
-                    echo "Frontend container started."
+                    echo "Frontend container created."
 
                     docker ps \
                         --filter "name=${FRONTEND_CONTAINER}"
@@ -379,7 +449,70 @@ pipeline {
 
 
         // =========================================================
-        // 13. FRONTEND HEALTH CHECK
+        // 14. WAIT FOR FRONTEND
+        // =========================================================
+        stage('Wait for Frontend') {
+
+            steps {
+
+                sh '''
+                    echo "=============================================="
+                    echo "WAITING FOR FRONTEND"
+                    echo "=============================================="
+
+                    SUCCESS=0
+
+                    for i in $(seq 1 30)
+                    do
+                        echo "Attempt $i/30..."
+
+                        if docker exec ${FRONTEND_CONTAINER} node -e "
+                            fetch('http://127.0.0.1:5443/swm/')
+                              .then(response => {
+                                  if (response.ok) {
+                                      process.exit(0);
+                                  } else {
+                                      process.exit(1);
+                                  }
+                              })
+                              .catch(() => {
+                                  process.exit(1);
+                              });
+                        "
+                        then
+                            echo ""
+                            echo "Frontend is ready."
+                            SUCCESS=1
+                            break
+                        fi
+
+                        sleep 2
+                    done
+
+                    if [ "$SUCCESS" -ne 1 ]
+                    then
+                        echo ""
+                        echo "=============================================="
+                        echo "FRONTEND FAILED TO START"
+                        echo "=============================================="
+
+                        echo ""
+                        echo "Container status:"
+                        docker ps -a --filter "name=${FRONTEND_CONTAINER}"
+
+                        echo ""
+                        echo "Frontend logs:"
+                        docker logs ${FRONTEND_CONTAINER} 2>&1 || true
+
+                        exit 1
+                    fi
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 15. FRONTEND HEALTH CHECK
         // =========================================================
         stage('Frontend Health Check') {
 
@@ -390,10 +523,8 @@ pipeline {
                     echo "FRONTEND HEALTH CHECK"
                     echo "=============================================="
 
-                    sleep 5
-
                     docker exec ${FRONTEND_CONTAINER} node -e "
-                        fetch('http://localhost:5443/swm/')
+                        fetch('http://127.0.0.1:5443/swm/')
                           .then(async response => {
 
                               console.log('HTTP Status:', response.status);
@@ -405,10 +536,9 @@ pipeline {
                           })
                           .catch(error => {
 
-                              console.error('Frontend health check failed:');
                               console.error(error);
-
                               process.exit(1);
+
                           });
                     "
 
@@ -420,7 +550,7 @@ pipeline {
 
 
         // =========================================================
-        // 14. CHECK RUNNING CONTAINERS
+        // 16. CHECK CONTAINERS
         // =========================================================
         stage('Check Containers') {
 
@@ -436,14 +566,14 @@ pipeline {
                         --filter "name=${FRONTEND_CONTAINER}"
 
                     echo ""
-                    echo "Container check completed."
+                    echo "SWM containers checked successfully."
                 '''
             }
         }
 
 
         // =========================================================
-        // 15. LOGIN TO HARBOR
+        // 17. LOGIN TO HARBOR
         // =========================================================
         stage('Login to Harbor') {
 
@@ -476,7 +606,7 @@ pipeline {
 
 
         // =========================================================
-        // 16. TAG BACKEND AND FRONTEND
+        // 18. TAG IMAGES
         // =========================================================
         stage('Tag Images') {
 
@@ -487,49 +617,31 @@ pipeline {
                     echo "TAGGING IMAGES"
                     echo "=============================================="
 
-                    echo ""
-                    echo "Backend build tag..."
-
                     docker tag \
                         ${BACKEND_LOCAL_IMAGE} \
                         ${BACKEND_IMAGE}:build-${BUILD_NUMBER}
-
-
-                    echo ""
-                    echo "Backend latest tag..."
 
                     docker tag \
                         ${BACKEND_LOCAL_IMAGE} \
                         ${BACKEND_IMAGE}:latest
 
-
-                    echo ""
-                    echo "Frontend build tag..."
-
                     docker tag \
                         ${FRONTEND_LOCAL_IMAGE} \
                         ${FRONTEND_IMAGE}:build-${BUILD_NUMBER}
-
-
-                    echo ""
-                    echo "Frontend latest tag..."
 
                     docker tag \
                         ${FRONTEND_LOCAL_IMAGE} \
                         ${FRONTEND_IMAGE}:latest
 
-
                     echo ""
                     echo "Images tagged successfully."
-
-                    docker images | grep "${HARBOR_PROJECT}"
                 '''
             }
         }
 
 
         // =========================================================
-        // 17. PUSH BACKEND TO HARBOR
+        // 19. PUSH BACKEND
         // =========================================================
         stage('Push Backend to Harbor') {
 
@@ -547,14 +659,14 @@ pipeline {
                         ${BACKEND_IMAGE}:latest
 
                     echo ""
-                    echo "Backend images pushed successfully."
+                    echo "Backend pushed successfully."
                 '''
             }
         }
 
 
         // =========================================================
-        // 18. PUSH FRONTEND TO HARBOR
+        // 20. PUSH FRONTEND
         // =========================================================
         stage('Push Frontend to Harbor') {
 
@@ -572,14 +684,14 @@ pipeline {
                         ${FRONTEND_IMAGE}:latest
 
                     echo ""
-                    echo "Frontend images pushed successfully."
+                    echo "Frontend pushed successfully."
                 '''
             }
         }
 
 
         // =========================================================
-        // 19. LOGOUT FROM HARBOR
+        // 21. LOGOUT HARBOR
         // =========================================================
         stage('Logout from Harbor') {
 
@@ -608,28 +720,28 @@ pipeline {
         success {
 
             echo '''
-==================================================
-JENKINS PIPELINE SUCCESS
-==================================================
+============================================================
+                 PIPELINE SUCCESS
+============================================================
 
 Smart Waste Management System deployed successfully.
 
 Backend:
-    Container : swm-backend-container
-    Port      : 5000
-    Health    : PASSED
-    Stats API : PASSED
+    Container       : swm-backend-container
+    Port            : 5000
+    Health Check    : PASSED
+    Statistics API  : PASSED
 
 Frontend:
-    Container : swm-frontend-container
-    Port      : 5443
-    Health    : PASSED
+    Container       : swm-frontend-container
+    Port            : 5443
+    Health Check    : PASSED
 
 Harbor:
-    Backend   : PUSHED
-    Frontend  : PUSHED
+    Backend Image   : PUSHED
+    Frontend Image  : PUSHED
 
-==================================================
+============================================================
 '''
         }
 
@@ -637,19 +749,19 @@ Harbor:
         failure {
 
             echo '''
-==================================================
-JENKINS PIPELINE FAILED
-==================================================
+============================================================
+                 PIPELINE FAILED
+============================================================
 
 Collecting Docker information...
 
-==================================================
+============================================================
 '''
 
             sh '''
                 echo ""
                 echo "=============================================="
-                echo "DOCKER CONTAINERS"
+                echo "ALL CONTAINERS"
                 echo "=============================================="
 
                 docker ps -a || true
@@ -657,16 +769,28 @@ Collecting Docker information...
 
                 echo ""
                 echo "=============================================="
-                echo "BACKEND LOGS"
+                echo "BACKEND CONTAINER"
                 echo "=============================================="
+
+                docker ps -a \
+                    --filter "name=${BACKEND_CONTAINER}" || true
+
+                echo ""
+                echo "Backend logs:"
 
                 docker logs ${BACKEND_CONTAINER} 2>&1 || true
 
 
                 echo ""
                 echo "=============================================="
-                echo "FRONTEND LOGS"
+                echo "FRONTEND CONTAINER"
                 echo "=============================================="
+
+                docker ps -a \
+                    --filter "name=${FRONTEND_CONTAINER}" || true
+
+                echo ""
+                echo "Frontend logs:"
 
                 docker logs ${FRONTEND_CONTAINER} 2>&1 || true
             '''
@@ -676,9 +800,9 @@ Collecting Docker information...
         always {
 
             echo '''
-==================================================
-JENKINS PIPELINE FINISHED
-==================================================
+============================================================
+                 PIPELINE FINISHED
+============================================================
 '''
         }
     }
