@@ -14,7 +14,7 @@ Database: Amazon RDS (PostgreSQL)
 
 Cloud: AWS EC2, S3, IAM
 
-DevOps: Docker, Nginx, Linux, Git, GitHub
+
 
 Key Features
 
