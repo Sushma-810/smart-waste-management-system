@@ -142,14 +142,15 @@ pipeline {
         ]) {
             sh '''
                 docker run -d \
-                    --name ${BACKEND_CONTAINER} \
-                    --network ${SWM_NETWORK} \
-                    --env-file "$ENV_FILE" \
-                    -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
-                    -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
-                    -e AWS_DEFAULT_REGION="us-east-1" \
-                    -p 5000:5000 \
-                    ${BACKEND_LOCAL_IMAGE}
+    --name ${BACKEND_CONTAINER} \
+    --network ${SWM_NETWORK} \
+    --add-host=host.docker.internal:host-gateway \
+    --env-file "$ENV_FILE" \
+    -e AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+    -e AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+    -e AWS_DEFAULT_REGION="us-east-1" \
+    -p 5000:5000 \
+    ${BACKEND_LOCAL_IMAGE}
 
                 echo "Backend container started."
 
