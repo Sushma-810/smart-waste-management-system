@@ -1,0 +1,291 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Deploy to EC2') {
+            steps {
+
+                echo 'Connecting to EC2...'
+
+                sshagent(['ec2-ssh']) {
+
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no ubuntu@54.166.230.109 << 'EOF'
+
+set -e
+
+echo "=========================================="
+echo "Connected to EC2"
+echo "=========================================="
+
+cd ~/smart-waste-management-system
+
+echo "Current directory:"
+pwd
+
+echo "Updating project:"
+git pull origin main
+
+echo "=========================================="
+echo "Building Backend"
+echo "=========================================="
+
+docker build 
+    -f swm-backend/swm.Dockerfile 
+    -t smart-waste-management-system-backend 
+    ./swm-backend
+
+echo "=========================================="
+echo "Building Frontend"
+echo "=========================================="
+
+docker build 
+    -f swm-frontend/swmfront.Dockerfile 
+    -t smart-waste-management-system-frontend 
+    ./swm-frontend
+
+echo "=========================================="
+echo "Removing old containers"
+echo "=========================================="
+
+docker rm -f swm-backend-container 2>/dev/null || true
+docker rm -f swm-frontend-container 2>/dev/null || true
+
+echo "=========================================="
+echo "Starting Backend"
+echo "=========================================="
+
+docker run -d 
+    --name swm-backend-container 
+    --network smart-waste-management-system_default 
+    --env-file swm-backend/.env 
+    -p 5000:5000 
+    --restart unless-stopped 
+    smart-waste-management-system-backend
+
+echo "=========================================="
+echo "Starting Frontend"
+echo "=========================================="
+
+docker run -d 
+    --name swm-frontend-container 
+    --network smart-waste-management-system_default 
+    -p 5443:5443 
+    --restart unless-stopped 
+    smart-waste-management-system-frontend
+
+echo "=========================================="
+echo "Containers"
+echo "=========================================="
+
+docker ps
+
+echo "=========================================="
+echo "Waiting for Backend"
+echo "=========================================="
+
+sleep 5
+
+for i in 1 2 3 4 5 6
+do
+    if docker exec swm-backend-container 
+        node -e "fetch('http://localhost:5000/api/health').then(r => { console.log('HTTP Status:', r.status); process.exit(r.status >= 200 && r.status < 500 ? 0 : 1) }).catch(() => process.exit(1))"
+    then
+        echo "Backend is healthy!"
+        break
+    fi
+
+    echo "Backend not ready. Attempt $i/6"
+    sleep 5
+
+    if [ "\$i" -eq 6 ]; then
+        echo "Backend failed."
+        docker logs swm-backend-container --tail 50
+        exit 1
+    fi
+done
+
+echo "=========================================="
+echo "Backend Logs"
+echo "=========================================="
+
+docker logs swm-backend-container --tail 20
+
+echo "=========================================="
+echo "Frontend Logs"
+echo "=========================================="
+
+docker logs swm-frontend-container --tail 20
+
+echo "=========================================="
+echo "EC2 DEPLOYMENT SUCCESSFUL"
+echo "=========================================="
+
+EOF
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo 'Smart Waste Management deployed successfully to EC2.'
+        }
+
+        failure {
+            echo 'EC2 deployment failed. Check the Jenkins console output.'
+        }
+
+        always {
+            echo 'EC2 Jenkins pipeline completed.'
+        }
+    }
+}pipeline {
+    agent any
+
+    stages {
+
+        stage('Deploy to EC2') {
+            steps {
+
+                echo 'Connecting to EC2...'
+
+                sshagent(['ec2-ssh']) {
+
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no ubuntu@54.166.230.109 << 'EOF'
+
+set -e
+
+echo "=========================================="
+echo "Connected to EC2"
+echo "=========================================="
+
+cd ~/smart-waste-management-system
+
+echo "Current directory:"
+pwd
+
+echo "Updating project:"
+git pull origin main
+
+echo "=========================================="
+echo "Building Backend"
+echo "=========================================="
+
+docker build 
+    -f swm-backend/swm.Dockerfile 
+    -t smart-waste-management-system-backend 
+    ./swm-backend
+
+echo "=========================================="
+echo "Building Frontend"
+echo "=========================================="
+
+docker build 
+    -f swm-frontend/swmfront.Dockerfile 
+    -t smart-waste-management-system-frontend 
+    ./swm-frontend
+
+echo "=========================================="
+echo "Removing old containers"
+echo "=========================================="
+
+docker rm -f swm-backend-container 2>/dev/null || true
+docker rm -f swm-frontend-container 2>/dev/null || true
+
+echo "=========================================="
+echo "Starting Backend"
+echo "=========================================="
+
+docker run -d 
+    --name swm-backend-container 
+    --network smart-waste-management-system_default 
+    --env-file swm-backend/.env 
+    -p 5000:5000 
+    --restart unless-stopped 
+    smart-waste-management-system-backend
+
+echo "=========================================="
+echo "Starting Frontend"
+echo "=========================================="
+
+docker run -d 
+    --name swm-frontend-container 
+    --network smart-waste-management-system_default 
+    -p 5443:5443 
+    --restart unless-stopped 
+    smart-waste-management-system-frontend
+
+echo "=========================================="
+echo "Containers"
+echo "=========================================="
+
+docker ps
+
+echo "=========================================="
+echo "Waiting for Backend"
+echo "=========================================="
+
+sleep 5
+
+for i in 1 2 3 4 5 6
+do
+    if docker exec swm-backend-container 
+        node -e "fetch('http://localhost:5000/api/health').then(r => { console.log('HTTP Status:', r.status); process.exit(r.status >= 200 && r.status < 500 ? 0 : 1) }).catch(() => process.exit(1))"
+    then
+        echo "Backend is healthy!"
+        break
+    fi
+
+    echo "Backend not ready. Attempt $i/6"
+    sleep 5
+
+    if [ "\$i" -eq 6 ]; then
+        echo "Backend failed."
+        docker logs swm-backend-container --tail 50
+        exit 1
+    fi
+done
+
+echo "=========================================="
+echo "Backend Logs"
+echo "=========================================="
+
+docker logs swm-backend-container --tail 20
+
+echo "=========================================="
+echo "Frontend Logs"
+echo "=========================================="
+
+docker logs swm-frontend-container --tail 20
+
+echo "=========================================="
+echo "EC2 DEPLOYMENT SUCCESSFUL"
+echo "=========================================="
+
+EOF
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+
+        success {
+            echo 'Smart Waste Management deployed successfully to EC2.'
+        }
+
+        failure {
+            echo 'EC2 deployment failed. Check the Jenkins console output.'
+        }
+
+        always {
+            echo 'EC2 Jenkins pipeline completed.'
+        }
+    }
+}
